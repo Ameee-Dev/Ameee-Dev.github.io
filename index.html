@@ -7,13 +7,16 @@
 <link rel="icon" href="https://github.com/Ameee-Dev.png">
 <style>
 :root { --bg:#fafafa; --fg:#161616; --mute:#6b7280; --line:#e5e7eb; --card:#fff; --a:#f5a623; --b:#2bb0e6; color-scheme:light }
-:root[data-theme=dark] { --bg:#0b0d12; --fg:#e8eaee; --mute:#8b93a1; --line:#262b36; --card:#12151c; color-scheme:dark }
+:root[data-theme=dark] { --bg:#0b0d12; --fg:#e8eaee; --mute:#8b93a9; --line:#262b36; --card:#12151c; color-scheme:dark }
 * { box-sizing:border-box }
 body { margin:0; min-height:100vh; color:var(--fg); transition:color .3s;
   font:16px/1.7 system-ui,-apple-system,"Noto Sans SC","Noto Sans JP",sans-serif;
   background:radial-gradient(500px 260px at 15% 0,rgba(245,166,35,.13),transparent),
              radial-gradient(500px 260px at 85% 0,rgba(43,176,230,.13),transparent),var(--bg) }
 main { max-width:640px; margin:0 auto; padding:88px 20px 60px; text-align:center }
+
+/* 背景画布：铺满全屏、放在内容下面、不挡鼠标；opacity 调淡，避免影响文字阅读 */
+#bg { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.75 }
 
 .bar { position:absolute; top:16px; right:16px; display:flex; gap:8px }
 .ctl { height:36px; padding:0 12px; font:14px system-ui,sans-serif; color:var(--fg); background:var(--card);
@@ -46,6 +49,8 @@ h2::after { content:""; display:block; width:36px; height:3px; margin:8px auto 0
 </style>
 </head>
 <body>
+<canvas id="bg"></canvas>
+
 <div class="bar">
   <button id="theme" class="ctl" aria-label="Theme"></button>
   <select id="lang" class="ctl" aria-label="Language">
@@ -68,9 +73,9 @@ h2::after { content:""; display:block; width:36px; height:3px; margin:8px auto 0
 
 <script>
 const T = {
-  zh: { hint:'Ame的公共GitHub展示页', slogan:'众人共建，人人共享。', projects:'个人项目', empty:'暂无项目' },
-  ja: { hint:'Ameの公開GitHubショーケース', slogan:'みんなで作り、みんなで共有。', projects:'個人プロジェクト', empty:'プロジェクトはまだありません' },
-  en: { hint:"Ame's Public GitHub Showcase", slogan:'Built by many, shared by all.', projects:'Personal Projects', empty:'No projects yet' }
+  zh: { hint:'Ame的GitHub展示页', slogan:'众人共建，人人共享。', projects:'个人项目', empty:'暂无项目' },
+  ja: { hint:'AmeのGitHubショーケース', slogan:'みんなで作り、みんなで共有。', projects:'個人プロジェクト', empty:'プロジェクトはまだありません' },
+  en: { hint:"Ame's GitHub Showcase", slogan:'Built by many, shared by all.', projects:'Personal Projects', empty:'No projects yet' }
 };
 const $ = s => document.querySelector(s), root = document.documentElement;
 const esc = s => new Option(s || '').innerHTML;
@@ -102,6 +107,95 @@ fetch('https://api.github.com/users/Ameee-Dev/repos?sort=updated')
     apply();
   });
 apply();
+</script>
+
+<!-- 八卦字符背景动画 -->
+<script>
+(() => {
+  let BG, YANG, YIN;                                   // 颜色跟随网站主题（深/浅）
+  const FS = 11, SPEED = 0.5, GUA = true;              // SPEED：角速度 rad/s；GUA=false 则只留太极
+  const T = GUA ? .58 : .9;                            // 太极半径（相对整体大小）
+  const CODE = [7, 3, 5, 1, 0, 4, 2, 6];               // 乾兑离震坤艮坎巽，二进制低位=初爻，1=阳爻
+  const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
+  const off = document.createElement('canvas'), ox = off.getContext('2d'); // 静止背景缓存
+  let W, H, cw, ch, cols, rows, R;
+
+  // 固定随机：同一个格子永远是同一个字符，所以背景是静止的
+  const hash = (i, j) => {
+    let h = Math.imul(i, 374761393) + Math.imul(j, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (h ^ (h >>> 16)) & 1;
+  };
+
+  // 判断某点属于：0=空白，1=阳，2=阴。x,y 为相对中心的像素坐标，a 为旋转角
+  const cls = (x, y, a) => {
+    const c = Math.cos(a), s = Math.sin(a);
+    const u = (x * c + y * s) / R, v = (-x * s + y * c) / R, r = Math.hypot(u, v);
+    if (r <= T) {                                      // —— 太极阴阳鱼 ——
+      const d1 = Math.hypot(u, v + T / 2), d2 = Math.hypot(u, v - T / 2), e = T * .14;
+      if (d1 < e) return 1;
+      if (d2 < e) return 2;
+      return d1 < T / 2 ? 2 : d2 < T / 2 ? 1 : u > 0 ? 1 : 2;
+    }
+    if (!GUA || r < .66 || r > 1.05) return 0;          // —— 八卦环 ——
+    const q = (-Math.PI / 2 - Math.atan2(v, u)) / (Math.PI / 4), k = Math.round(q);
+    const dth = Math.abs(k - q) * Math.PI / 4;
+    const i = Math.round((r - .72) / .125);            // 第几爻（0=初爻，最靠里）
+    if (i < 0 || i > 2 || Math.abs(r - .72 - .125 * i) > .045 || dth > .27) return 0;
+    if ((CODE[((k % 8) + 8) % 8] >> i) & 1) return 1;  // 阳爻：整条线
+    return dth < .08 ? 0 : 2;                          // 阴爻：中间断开
+  };
+
+  function setup() {
+    const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+    BG = v('--bg'); YANG = v('--fg'); YIN = v('--mute');
+    const dpr = devicePixelRatio || 1;
+    W = innerWidth; H = innerHeight;
+    for (const c of [cv, off]) { c.width = W * dpr; c.height = H * dpr; }
+    for (const c of [ctx, ox]) {
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.font = FS + 'px ui-monospace,Menlo,Consolas,monospace';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+    }
+    cw = ctx.measureText('#').width; ch = FS * 1.2;
+    cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
+    R = Math.min(W, H) * 0.44;                         // 整体大小
+    ox.fillStyle = BG; ox.fillRect(0, 0, W, H);
+    ox.fillStyle = 'rgba(0,0,0,0)';                    // 静止背景字符（默认全透明，想要淡淡的底纹可调这里）
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++)
+        ox.fillText(hash(i, j) ? '#' : '*', (i + .5) * cw, (j + .5) * ch);
+  }
+
+  const paint = (L, s, color) => {
+    ctx.fillStyle = BG;
+    for (let k = 0; k < L.length; k += 2) ctx.fillRect(L[k] * cw - .5, L[k + 1] * ch - .5, cw + 1, ch + 1);
+    ctx.fillStyle = color;
+    for (let k = 0; k < L.length; k += 2) ctx.fillText(s, (L[k] + .5) * cw, (L[k + 1] + .5) * ch);
+  };
+
+  function draw(t) {
+    const a = t / 1000 * SPEED, cx = W / 2, cy = H / 2, L = [[], [], [], []]; // 阳#、阳*、阴#、阴*
+    ctx.drawImage(off, 0, 0, W, H);
+    for (let j = Math.floor((cy - 1.06 * R) / ch); j <= Math.ceil((cy + 1.06 * R) / ch); j++)
+      for (let i = Math.floor((cx - 1.06 * R) / cw); i <= Math.ceil((cx + 1.06 * R) / cw); i++) {
+        const x = (i + .5) * cw - cx, y = (j + .5) * ch - cy, c = cls(x, y, a);
+        if (!c) continue;
+        // 四周有不同类的邻居 → 边缘 *；否则内部 #
+        const edge = cls(x - cw, y, a) !== c || cls(x + cw, y, a) !== c || cls(x, y - ch, a) !== c || cls(x, y + ch, a) !== c;
+        L[(c - 1) * 2 + edge].push(i, j);
+      }
+    L.forEach((l, n) => paint(l, n % 2 ? '*' : '#', n < 2 ? YANG : YIN));
+  }
+
+  const redo = () => { setup(); draw(performance.now()); };
+  const loop = t => { draw(t); requestAnimationFrame(loop); };
+  setup();
+  addEventListener('resize', redo);
+  new MutationObserver(redo).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); // 切换主题时换色
+  // 系统开启“减少动画”时只显示静态画面
+  matchMedia('(prefers-reduced-motion:reduce)').matches ? draw(0) : requestAnimationFrame(loop);
+})();
 </script>
 </body>
 </html>
