@@ -6,8 +6,8 @@
 <title>Ame</title>
 <link rel="icon" href="https://github.com/Ameee-Dev.png">
 <style>
-:root { --bg:#fafafa; --fg:#161616; --mute:#6b7280; --line:#e5e7eb; --card:#fff; --a:#f5a623; --b:#2bb0e6; --yang:#b45309; --yin:#0369a1; color-scheme:light }
-:root[data-theme=dark] { --bg:#0b0d12; --fg:#e8eaee; --mute:#8b93a1; --line:#262b36; --card:#12151c; --yang:#ffb938; --yin:#38c6ff; color-scheme:dark }
+:root { --bg:#fafafa; --fg:#161616; --mute:#6b7280; --line:#e5e7eb; --card:#fff; --a:#f5a623; --b:#2bb0e6; color-scheme:light }
+:root[data-theme=dark] { --bg:#0b0d12; --fg:#e8eaee; --mute:#8b93a1; --line:#262b36; --card:#12151c; color-scheme:dark }
 * { box-sizing:border-box }
 body { margin:0; min-height:100vh; color:var(--fg); transition:color .3s;
   font:16px/1.7 system-ui,-apple-system,"Noto Sans SC","Noto Sans JP",sans-serif;
@@ -15,12 +15,13 @@ body { margin:0; min-height:100vh; color:var(--fg); transition:color .3s;
              radial-gradient(500px 260px at 85% 0,rgba(43,176,230,.13),transparent),var(--bg) }
 main { max-width:640px; margin:0 auto; padding:88px 20px 60px; text-align:center }
 
-/* 背景画布：铺满全屏、放在内容下面、不挡鼠标；opacity 调淡，避免影响文字阅读 */
-#bg { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.65 }
-:root[data-theme=dark] #bg { opacity:.5 }
+/* 三体背景画布：铺满全屏、在内容下面、不挡鼠标；白天模式调淡一点，避免抢文字 */
+#bg { position:fixed; inset:0; width:100%; height:100%; z-index:-1; pointer-events:none; opacity:.55 }
+:root[data-theme=dark] #bg { opacity:1 }
 
 .bar { position:absolute; top:16px; right:16px; display:flex; gap:8px }
-.ctl { height:36px; padding:0 12px; font:14px system-ui,sans-serif; color:var(--fg); background:var(--card);
+.ctl, .pill, #repos a { background:color-mix(in srgb,var(--card) 72%,transparent); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px) }
+.ctl { height:36px; padding:0 12px; font:14px system-ui,sans-serif; color:var(--fg);
   border:1px solid var(--line); border-radius:10px; cursor:pointer; transition:.2s }
 .ctl:hover { border-color:var(--b) }
 
@@ -32,8 +33,8 @@ main { max-width:640px; margin:0 auto; padding:88px 20px 60px; text-align:center
   background:linear-gradient(135deg,var(--a),var(--b)) border-box; box-shadow:0 8px 30px rgba(43,176,230,.25) }
 h1 { margin:.7em 0 .1em; font-size:1.9rem; line-height:1.3; color:transparent;
   background:linear-gradient(90deg,var(--a),var(--b)); -webkit-background-clip:text; background-clip:text }
-.slogan { margin:.2em 0 1em }
-.pill { display:inline-block; padding:6px 16px; color:var(--fg); text-decoration:none; background:var(--card);
+.slogan { margin:.2em 0 1em; color:var(--mute) }
+.pill { display:inline-block; padding:6px 16px; color:var(--fg); text-decoration:none;
   border:1px solid var(--line); border-radius:999px; transition:.2s }
 .pill:hover { border-color:var(--b); transform:translateY(-2px) }
 
@@ -41,7 +42,7 @@ h2 { margin:3em 0 1em; font-size:1.15rem }
 h2::after { content:""; display:block; width:36px; height:3px; margin:8px auto 0; border-radius:3px;
   background:linear-gradient(90deg,var(--a),var(--b)) }
 #repos { display:grid; gap:12px; text-align:left }
-#repos a { display:block; padding:14px 18px; color:inherit; text-decoration:none; background:var(--card);
+#repos a { display:block; padding:14px 18px; color:inherit; text-decoration:none;
   border:1px solid var(--line); border-radius:14px; transition:.2s }
 #repos a:hover { transform:translateY(-3px); border-color:var(--b); box-shadow:0 8px 24px rgba(43,176,230,.15) }
 #repos b { display:block }
@@ -71,6 +72,138 @@ h2::after { content:""; display:block; width:36px; height:3px; margin:8px auto 0
     <div id="repos"></div>
   </section>
 </main>
+
+<!-- 三体背景：新增了「鼠标引力」和「点击冲击波」，随主题自动切换黑白 -->
+<script>
+(() => {
+  const FS = 11, BASE = [0, 215, 130];                 // BASE：三个球的起始色相（红、蓝、绿）
+  const TS = 3, TRAIL = 90, RAD = 34;                  // TS：时间流速；TRAIL：拖尾长度；RAD：球半径
+  const R0 = 2.2, K = 2, G = 0.8;                      // R0/K：软边界；G：鼠标引力强度（想关掉就设为 0）
+  const cv = document.getElementById('bg'), ctx = cv.getContext('2d'), root = document.documentElement;
+  let W, H, cw, ch, b, trail, rings = [], flare = {}, S = 1, CX = 0, CY = 0, ptr = null;
+
+  function init() {
+    const r = () => 1 + (Math.random() - .5) * .12, v = [-.93240737, -.86473146];
+    b = [[-.97000436, .24308753], [.97000436, -.24308753], [0, 0]].map((p, i) => ({
+      x: p[0] * r(), y: p[1] * r(), vx: (i < 2 ? -v[0] / 2 : v[0]) * r(), vy: (i < 2 ? -v[1] / 2 : v[1]) * r() }));
+    const mx = (b[0].vx + b[1].vx + b[2].vx) / 3, my = (b[0].vy + b[1].vy + b[2].vy) / 3;
+    b.forEach(o => { o.vx -= mx; o.vy -= my; });
+    trail = b.map(() => []);
+  }
+
+  // 受力 = 三球万有引力 + 软边界回拉 + 鼠标引力
+  const acc = () => b.map((o, i) => {
+    let ax = 0, ay = 0;
+    b.forEach((p, j) => {
+      if (i === j) return;
+      const dx = p.x - o.x, dy = p.y - o.y, d = Math.pow(dx * dx + dy * dy + 4e-4, 1.5);
+      ax += dx / d; ay += dy / d;
+    });
+    const d = Math.hypot(o.x, o.y);
+    if (d > R0) { const f = K * (d - R0) / d; ax -= f * o.x; ay -= f * o.y; }
+    if (ptr) {
+      const dx = ptr[0] - o.x, dy = ptr[1] - o.y, e = Math.pow(dx * dx + dy * dy + .3, 1.5);
+      ax += G * dx / e; ay += G * dy / e;
+    }
+    return [ax, ay];
+  });
+  const step = h => {
+    let a = acc();
+    b.forEach((o, i) => { o.vx += a[i][0] * h / 2; o.vy += a[i][1] * h / 2; o.x += o.vx * h; o.y += o.vy * h; });
+    a = acc();
+    b.forEach((o, i) => {
+      o.vx += a[i][0] * h / 2; o.vy += a[i][1] * h / 2;
+      const s = Math.hypot(o.vx, o.vy); if (s > 7) { o.vx *= 7 / s; o.vy *= 7 / s; }
+    });
+  };
+
+  function setup() {
+    const dpr = devicePixelRatio || 1;
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = FS + 'px ui-monospace,Menlo,Consolas,monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    cw = ctx.measureText('#').width; ch = FS * 1.2;
+  }
+
+  function draw(t) {
+    const dk = root.dataset.theme === 'dark', mode = dk ? 'lighter' : 'source-over', L = l => dk ? l : l * .55;
+    CX = (b[0].x + b[1].x + b[2].x) / 3; CY = (b[0].y + b[1].y + b[2].y) / 3;
+    const ext = Math.max(...b.map(o => Math.hypot(o.x - CX, o.y - CY)));
+    S += (Math.min(W, H) * .4 / Math.max(ext, 1.2) - S) * .03;
+    const P = (x, y) => [W / 2 + (x - CX) * S, H / 2 + (y - CY) * S];
+    const hue = k => (BASE[k] + t * 25) % 360;
+    const cell = (X, Y) => [(Math.floor(X / cw) + .5) * cw, (Math.floor(Y / ch) + .5) * ch];
+
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+      const A = b[i], B = b[j], key = i * 3 + j;
+      if (Math.hypot(A.x - B.x, A.y - B.y) < .35 && t - (flare[key] || -9) > .8) {
+        flare[key] = t; rings.push({ x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, t0: t, h: (hue(i) + hue(j)) / 2 });
+      }
+    }
+    rings = rings.filter(r => t - r.t0 < 1.4);
+
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, W, H);                          // 透明画布，让网页本身的背景透出来
+
+    ctx.globalCompositeOperation = mode;
+    b.forEach((o, k) => {
+      const tr = trail[k]; tr.push([o.x, o.y, Math.hypot(o.vx, o.vy)]); if (tr.length > TRAIL) tr.shift();
+      tr.forEach((q, n) => {
+        const f = n / tr.length, [X, Y] = P(q[0], q[1]);
+        ctx.globalAlpha = f * .7;
+        ctx.fillStyle = `hsl(${(hue(k) + q[2] * 35) % 360},100%,${L(55 + f * 15)}%)`;
+        ctx.fillText(f > .9 ? '#' : '*', ...cell(X, Y));
+      });
+    });
+
+    rings.forEach(r => {
+      const age = (t - r.t0) / 1.4, rad = age * 220, [X, Y] = P(r.x, r.y), n = Math.max(16, Math.floor(rad * 1.2));
+      ctx.globalAlpha = (1 - age) * .9; ctx.fillStyle = `hsl(${r.h},100%,${L(75)}%)`;
+      for (let a = 0; a < n; a++) ctx.fillText('*', ...cell(X + rad * Math.cos(a / n * 6.2832), Y + rad * Math.sin(a / n * 6.2832)));
+    });
+
+    b.forEach((o, k) => {
+      const [X, Y] = P(o.x, o.y), r = RAD * (.8 + .25 * Math.min(Math.hypot(o.vx, o.vy), 3)), h = hue(k);
+      for (let j = Math.floor((Y - 2 * r) / ch); j <= Math.ceil((Y + 2 * r) / ch); j++)
+        for (let i = Math.floor((X - 2 * r) / cw); i <= Math.ceil((X + 2 * r) / cw); i++) {
+          const x = (i + .5) * cw, y = (j + .5) * ch, d = Math.hypot(x - X, y - Y);
+          if (d > 2 * r) continue;
+          if (d > r) {
+            ctx.globalCompositeOperation = mode; ctx.globalAlpha = (2 - d / r) * .35;
+            ctx.fillStyle = `hsl(${h},100%,${L(60)}%)`; ctx.fillText('*', x, y);
+          } else {
+            ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+            ctx.clearRect(i * cw - .5, j * ch - .5, cw + 1, ch + 1);
+            ctx.fillStyle = `hsl(${h},100%,${L(97 - d / r * 47)}%)`; ctx.fillText(d / r < .7 ? '#' : '*', x, y);
+          }
+        }
+    });
+  }
+
+  // 鼠标/手指位置换算成模拟空间坐标；按下时放一圈冲击波
+  const toSim = e => [(e.clientX - W / 2) / S + CX, (e.clientY - H / 2) / S + CY];
+  addEventListener('pointermove', e => { ptr = toSim(e); });
+  addEventListener('pointerdown', e => {
+    ptr = toSim(e);
+    rings.push({ x: ptr[0], y: ptr[1], t0: performance.now() / 1000, h: BASE[0] + performance.now() / 40 });
+  });
+  addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') ptr = null; });
+  document.documentElement.addEventListener('pointerleave', () => { ptr = null; });
+
+  let last = 0;
+  const loop = ms => {
+    const dt = Math.min((ms - last) / 1000, .05) * TS, n = Math.ceil(dt / .002); last = ms;
+    for (let i = 0; i < n; i++) step(dt / n);
+    if (b.some(o => !isFinite(o.x + o.y))) init();
+    draw(ms / 1000); requestAnimationFrame(loop);
+  };
+  setup(); init();
+  addEventListener('resize', () => { setup(); draw(performance.now() / 1000); });
+  matchMedia('(prefers-reduced-motion:reduce)').matches ? draw(0) : requestAnimationFrame(t => { last = t; loop(t); });
+})();
+</script>
 
 <script>
 const T = {
@@ -108,95 +241,6 @@ fetch('https://api.github.com/users/Ameee-Dev/repos?sort=updated')
     apply();
   });
 apply();
-</script>
-
-<!-- 八卦字符背景动画 -->
-<script>
-(() => {
-  let BG, YANG, YIN;                                   // 颜色跟随网站主题（深/浅）
-  const FS = 11, SPEED = 0.5, GUA = true;              // SPEED：角速度 rad/s；GUA=false 则只留太极
-  const T = GUA ? .58 : .9;                            // 太极半径（相对整体大小）
-  const CODE = [7, 3, 5, 1, 0, 4, 2, 6];               // 乾兑离震坤艮坎巽，二进制低位=初爻，1=阳爻
-  const cv = document.getElementById('bg'), ctx = cv.getContext('2d');
-  const off = document.createElement('canvas'), ox = off.getContext('2d'); // 静止背景缓存
-  let W, H, cw, ch, cols, rows, R;
-
-  // 固定随机：同一个格子永远是同一个字符，所以背景是静止的
-  const hash = (i, j) => {
-    let h = Math.imul(i, 374761393) + Math.imul(j, 668265263);
-    h = Math.imul(h ^ (h >>> 13), 1274126177);
-    return (h ^ (h >>> 16)) & 1;
-  };
-
-  // 判断某点属于：0=空白，1=阳，2=阴。x,y 为相对中心的像素坐标，a 为旋转角
-  const cls = (x, y, a) => {
-    const c = Math.cos(a), s = Math.sin(a);
-    const u = (x * c + y * s) / R, v = (-x * s + y * c) / R, r = Math.hypot(u, v);
-    if (r <= T) {                                      // —— 太极阴阳鱼 ——
-      const d1 = Math.hypot(u, v + T / 2), d2 = Math.hypot(u, v - T / 2), e = T * .14;
-      if (d1 < e) return 1;
-      if (d2 < e) return 2;
-      return d1 < T / 2 ? 2 : d2 < T / 2 ? 1 : u > 0 ? 1 : 2;
-    }
-    if (!GUA || r < .66 || r > 1.05) return 0;          // —— 八卦环 ——
-    const q = (-Math.PI / 2 - Math.atan2(v, u)) / (Math.PI / 4), k = Math.round(q);
-    const dth = Math.abs(k - q) * Math.PI / 4;
-    const i = Math.round((r - .72) / .125);            // 第几爻（0=初爻，最靠里）
-    if (i < 0 || i > 2 || Math.abs(r - .72 - .125 * i) > .045 || dth > .27) return 0;
-    if ((CODE[((k % 8) + 8) % 8] >> i) & 1) return 1;  // 阳爻：整条线
-    return dth < .08 ? 0 : 2;                          // 阴爻：中间断开
-  };
-
-  function setup() {
-    const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
-    BG = v('--bg'); YANG = v('--yang'); YIN = v('--yin');
-    const dpr = devicePixelRatio || 1;
-    W = innerWidth; H = innerHeight;
-    for (const c of [cv, off]) { c.width = W * dpr; c.height = H * dpr; }
-    for (const c of [ctx, ox]) {
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.font = FS + 'px ui-monospace,Menlo,Consolas,monospace';
-      c.textAlign = 'center'; c.textBaseline = 'middle';
-    }
-    cw = ctx.measureText('#').width; ch = FS * 1.2;
-    cols = Math.ceil(W / cw); rows = Math.ceil(H / ch);
-    R = Math.min(W, H) * 0.44;                         // 整体大小
-    ox.fillStyle = BG; ox.fillRect(0, 0, W, H);
-    ox.fillStyle = 'rgba(0,0,0,0)';                    // 静止背景字符（默认全透明，想要淡淡的底纹可调这里）
-    for (let j = 0; j < rows; j++)
-      for (let i = 0; i < cols; i++)
-        ox.fillText(hash(i, j) ? '#' : '*', (i + .5) * cw, (j + .5) * ch);
-  }
-
-  const paint = (L, s, color) => {
-    ctx.fillStyle = BG;
-    for (let k = 0; k < L.length; k += 2) ctx.fillRect(L[k] * cw - .5, L[k + 1] * ch - .5, cw + 1, ch + 1);
-    ctx.fillStyle = color;
-    for (let k = 0; k < L.length; k += 2) ctx.fillText(s, (L[k] + .5) * cw, (L[k + 1] + .5) * ch);
-  };
-
-  function draw(t) {
-    const a = t / 1000 * SPEED, cx = W / 2, cy = H / 2, L = [[], [], [], []]; // 阳#、阳*、阴#、阴*
-    ctx.drawImage(off, 0, 0, W, H);
-    for (let j = Math.floor((cy - 1.06 * R) / ch); j <= Math.ceil((cy + 1.06 * R) / ch); j++)
-      for (let i = Math.floor((cx - 1.06 * R) / cw); i <= Math.ceil((cx + 1.06 * R) / cw); i++) {
-        const x = (i + .5) * cw - cx, y = (j + .5) * ch - cy, c = cls(x, y, a);
-        if (!c) continue;
-        // 四周有不同类的邻居 → 边缘 *；否则内部 #
-        const edge = cls(x - cw, y, a) !== c || cls(x + cw, y, a) !== c || cls(x, y - ch, a) !== c || cls(x, y + ch, a) !== c;
-        L[(c - 1) * 2 + edge].push(i, j);
-      }
-    L.forEach((l, n) => paint(l, n % 2 ? '*' : '#', n < 2 ? YANG : YIN));
-  }
-
-  const redo = () => { setup(); draw(performance.now()); };
-  const loop = t => { draw(t); requestAnimationFrame(loop); };
-  setup();
-  addEventListener('resize', redo);
-  new MutationObserver(redo).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); // 切换主题时换色
-  // 系统开启“减少动画”时只显示静态画面
-  matchMedia('(prefers-reduced-motion:reduce)').matches ? draw(0) : requestAnimationFrame(loop);
-})();
 </script>
 </body>
 </html>
